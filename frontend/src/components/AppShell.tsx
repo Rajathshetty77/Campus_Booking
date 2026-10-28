@@ -97,7 +97,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <div className="app">
         <header className="topbar">
           <Link href="/calendar" className="brand">
-            <span className="brand-mark" aria-hidden="true" />
+            <img className="brand-mark" src="/logo.png" alt="Campus logo" />
             <span className="brand-name">NMAMIT <span className="muted">Campus Booking</span></span>
           </Link>
           <nav className="tabs" aria-label="Main">

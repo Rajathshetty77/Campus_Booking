@@ -41,7 +41,7 @@ export default function LoginPage() {
     <main className="login">
       <section className="login-card">
         <div className="brand brand-lg">
-          <span className="brand-mark" aria-hidden="true" />
+          <img className="brand-mark" src="/logo.png" alt="Campus logo" />
           <div>
             <h1>NMAMIT Campus Booking</h1>
             <p className="muted">One shared calendar for every hall, lab and ground on campus, with an AI assistant that books for you.</p>

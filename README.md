@@ -513,11 +513,11 @@ Lists campus venues.
   [
     {
       "id": 1,
-      "name": "Main Auditorium",
-      "block": "Admin Block",
+      "name": "Sadananda Open Air Auditorium",
+      "block": "B C Alva Sports Complex, Nitte",
       "type": "Auditorium",
-      "capacity": 600,
-      "features": ["projector", "sound system", "stage", "AC", "recording"],
+      "capacity": 2500,
+      "features": ["projector", "sound system", "stage", "recording"],
       "color": "#4f46e5",
       "requires_approval": true,
       "open_time": "08:00",
@@ -572,7 +572,7 @@ Retrieves all approved and pending reservations for a given date range to popula
       "event_type": "Workshop",
       "organizer": "Robotics Club",
       "venue_id": 2,
-      "venue_name": "Seminar Hall A",
+      "venue_name": "Sambhram Auditorium",
       "venue_color": "#0891b2",
       "start": "2026-10-30 14:00",
       "end": "2026-10-30 17:00",
@@ -646,11 +646,11 @@ Performs a live availability check as the user modifies the booking form.
   {
     "ok": true,
     "problems": [],
-    "warnings": ["Main Auditorium bookings need admin approval."],
+    "warnings": ["Sadananda Open Air Auditorium bookings need admin approval."],
     "conflicts": [],
     "alternatives": { "same_venue": [], "other_venues": [], "other_days": [] },
     "recommended_venues": [
-      { "venue_id": 1, "name": "Main Auditorium", "capacity": 600, "score": 93 }
+      { "venue_id": 1, "name": "Sadananda Open Air Auditorium", "capacity": 2500, "score": 93 }
     ]
   }
   ```
@@ -685,8 +685,8 @@ Aggregates booking metrics and 7-day venue utilization.
   {
     "counts": { "approved": 12, "pending": 3, "rejected": 1, "cancelled": 2 },
     "utilisation": [
-      { "id": 1, "name": "Main Auditorium", "color": "#4f46e5", "hours": 14.5 },
-      { "id": 2, "name": "Seminar Hall A", "color": "#0891b2", "hours": 9.0 }
+      { "id": 1, "name": "Sadananda Open Air Auditorium", "color": "#4f46e5", "hours": 14.5 },
+      { "id": 2, "name": "Sambhram Auditorium", "color": "#0891b2", "hours": 9.0 }
     ]
   }
   ```
@@ -711,7 +711,7 @@ Interacts with the conversational AI assistant.
 - **Response `200 OK`**:
   ```json
   {
-    "reply": "Seminar Hall A is free then. Review the draft and confirm.",
+    "reply": "Sambhram Auditorium is free then. Review the draft and confirm.",
     "intent": "book",
     "source": "claude",
     "draft": {
@@ -729,7 +729,7 @@ Interacts with the conversational AI assistant.
     "analysis": {
       "ok": true,
       "problems": [],
-      "warnings": ["Seminar Hall A bookings need admin approval."],
+      "warnings": ["Sambhram Auditorium bookings need admin approval."],
       "conflicts": [],
       "alternatives": { "same_venue": [], "other_venues": [], "other_days": [] }
     }
