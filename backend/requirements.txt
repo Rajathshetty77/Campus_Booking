@@ -1,0 +1,7 @@
+fastapi>=0.156
+uvicorn[standard]>=0.54
+anthropic>=1.17
+python-dotenv>=1.2
+tzdata>=2024.1
+psycopg[binary]>=3.3
+psycopg-pool>=3.3
