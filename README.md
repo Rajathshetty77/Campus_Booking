@@ -845,7 +845,7 @@ All sensitive configuration is read from `backend/.env`. A template is provided 
 7. *Special Characters*: If your database password contains special characters (`@`, `#`, `$`, `/`), URL-encode them (e.g., `@` becomes `%40`, `#` becomes `%23`).
 
 > [!NOTE]
-> You do **not** need to manually execute SQL scripts in Supabase. On initial backend launch, [`backend/app/db.py`](backend/app/db.py) will automatically execute [`backend/app/schema.sql`](backend/app/schema.sql) and populate sample venues and bookings if the tables are empty.
+> You do **not** need to manually execute SQL scripts in Supabase. On initial backend launch, [`backend/app/db.py`](backend/app/db.py) will automatically execute [`backend/app/schema.sql`](backend/app/schema.sql), populate sample venues and bookings if the tables are empty, and update untouched legacy sample venues to the current venue list while preserving their IDs and bookings.
 
 ---
 

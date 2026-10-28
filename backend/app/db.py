@@ -72,6 +72,7 @@ def _seed(conn: Connection) -> None:
     with conn.transaction():
         conn.execute("LOCK TABLE venues IN EXCLUSIVE MODE")  # two workers starting at once must not both seed
         if conn.execute("SELECT COUNT(*) AS n FROM venues").fetchone()["n"]:
+            _update_legacy_seed_venues(conn)
             return
 
         venues = [
@@ -79,7 +80,7 @@ def _seed(conn: Connection) -> None:
             ("Sambhram Auditorium", "Basement of S Ramanujan Block", "Auditorium", 350, ["projector", "sound system", "AC"], "#0891b2", True, "08:00", "20:00"),
             ("Shambhavi Auditorium", "1st Floor, APJ Kalam Block", "Auditorium", 150, ["projector", "sound system", "AC"], "#059669", True, "08:00", "20:00"),
             ("Sowparnika Seminar Hall", "1st Floor, S Ramanujan Block", "Seminar Hall", 100, ["projector", "video conferencing", "AC"], "#d97706", True, "09:00", "18:00"),
-            ("Phalguni Seminar Hall", "2nd Floor, S Ramanujan Block", "Seminar Hall", 100, ["computers", "projector", "AC","Wi-FI","LAN,"], "#dc2626", False, "08:00", "19:00"),
+            ("Phalguni Seminar Hall", "2nd Floor, S Ramanujan Block", "Seminar Hall", 100, ["computers", "projector", "AC", "Wi-Fi", "LAN"], "#dc2626", False, "08:00", "19:00"),
             ("Open Air Theatre", "Central Campus", "Outdoor", 4000, ["stage", "sound system"], "#7c3aed", True, "07:00", "22:00"),
             ("Library Discussion Room", "Central Library", "Discussion Room", 15, ["whiteboard", "display"], "#db2777", False, "08:00", "20:00"),
             ("Indoor Sports Hall", "Sports Complex", "Sports", 200, ["badminton courts", "sound system"], "#65a30d", True, "06:00", "21:00"),
@@ -115,3 +116,45 @@ def _seed(conn: Connection) -> None:
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (title, etype, org, venue_ids[venue - 1], demo_id, stamp(d, s), stamp(d, e), att, status),
             )
+
+
+def _update_legacy_seed_venues(conn: Connection) -> None:
+    """Upgrade untouched sample venues while preserving IDs and existing bookings."""
+    updates = [
+        (
+            ("Main Auditorium", "Admin Block", "Auditorium", 600, ["projector", "sound system", "stage", "AC", "recording"], "#4f46e5", True, "08:00", "21:00"),
+            ("Sadananda Open Air Auditorium", "B C Alva Sports Complex, Nitte", "Auditorium", 2500, ["projector", "sound system", "stage", "recording"], "#4f46e5", True, "08:00", "21:00"),
+        ),
+        (
+            ("Seminar Hall A", "CSE Block", "Seminar Hall", 150, ["projector", "sound system", "AC"], "#0891b2", True, "08:00", "20:00"),
+            ("Sambhram Auditorium", "Basement of S Ramanujan Block", "Auditorium", 350, ["projector", "sound system", "AC"], "#0891b2", True, "08:00", "20:00"),
+        ),
+        (
+            ("Seminar Hall B", "ECE Block", "Seminar Hall", 120, ["projector", "sound system", "AC"], "#059669", True, "08:00", "20:00"),
+            ("Shambhavi Auditorium", "1st Floor, APJ Kalam Block", "Auditorium", 150, ["projector", "sound system", "AC"], "#059669", True, "08:00", "20:00"),
+        ),
+        (
+            ("Conference Room", "Admin Block", "Conference Room", 30, ["projector", "video conferencing", "AC"], "#d97706", True, "09:00", "18:00"),
+            ("Sowparnika Seminar Hall", "1st Floor, S Ramanujan Block", "Seminar Hall", 100, ["projector", "video conferencing", "AC"], "#d97706", True, "09:00", "18:00"),
+        ),
+        (
+            ("Computer Lab 1", "CSE Block", "Lab", 70, ["computers", "projector", "AC"], "#dc2626", False, "08:00", "19:00"),
+            ("Phalguni Seminar Hall", "2nd Floor, S Ramanujan Block", "Seminar Hall", 100, ["computers", "projector", "AC", "Wi-Fi", "LAN"], "#dc2626", False, "08:00", "19:00"),
+        ),
+        (
+            ("Open Air Theatre", "Central Campus", "Outdoor", 1000, ["stage", "sound system"], "#7c3aed", True, "07:00", "22:00"),
+            ("Open Air Theatre", "Central Campus", "Outdoor", 4000, ["stage", "sound system"], "#7c3aed", True, "07:00", "22:00"),
+        ),
+    ]
+    for old, new in updates:
+        conn.execute(
+            """UPDATE venues
+               SET name = %s, block = %s, type = %s, capacity = %s, features = %s, color = %s,
+                   requires_approval = %s, open_time = %s, close_time = %s
+               WHERE name = %s AND block = %s AND type = %s AND capacity = %s AND features = %s
+                 AND color = %s AND requires_approval = %s AND open_time = %s AND close_time = %s""",
+            (
+                new[0], new[1], new[2], new[3], Jsonb(new[4]), new[5], new[6], new[7], new[8],
+                old[0], old[1], old[2], old[3], Jsonb(old[4]), old[5], old[6], old[7], old[8],
+            ),
+        )
