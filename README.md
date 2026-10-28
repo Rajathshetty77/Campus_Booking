@@ -474,11 +474,11 @@ Retrieves public application configuration, allowed domains, AI status, event ty
   ```
 
 #### `POST /api/auth/login`
-Signs in a user with their college email address. Creates the user record if it does not yet exist. Sets an `HttpOnly`, `SameSite=Lax` cookie named `nb_session`.
+Signs in an existing user with their college email address and password. Sets an `HttpOnly`, `SameSite=Lax` cookie named `nb_session`.
 - **Access**: Public
 - **Request Body**:
   ```json
-  { "email": "rajath@nmamit.in", "name": "Rajath K" }
+  { "email": "rajath@nmamit.in", "password": "your-password" }
   ```
 - **Response `200 OK`**:
   ```json
@@ -486,7 +486,19 @@ Signs in a user with their college email address. Creates the user record if it 
     "user": { "id": 2, "email": "rajath@nmamit.in", "name": "Rajath K", "role": "member", "department": null }
   }
   ```
-- **Error Codes**: `400 Bad Request` if domain is not in `ALLOWED_DOMAINS`.
+- **Error Codes**: `400 Bad Request` if the domain is not in `ALLOWED_DOMAINS`; `401 Unauthorized` for incorrect credentials.
+
+#### `POST /api/auth/register`
+Creates an account and signs in the new user. Registration is restricted to `ALLOWED_DOMAINS`; passwords must be 8–128 characters. Passwords are stored as scrypt hashes, not plaintext.
+- **Access**: Public
+- **Request Body**:
+  ```json
+  { "email": "rajath@nmamit.in", "name": "Rajath K", "password": "choose-a-password" }
+  ```
+- **Response `201 Created`**: Returns the user object and sets the session cookie.
+- **Error Codes**: `400 Bad Request` for invalid input or disallowed email domain; `403 Forbidden` for an admin address reserved for server provisioning; `409 Conflict` if an account already exists.
+
+Email addresses are not verified by email in this application. Restricting registration to college domains does not prove that the registrant owns that mailbox.
 
 #### `POST /api/auth/logout`
 Deletes the active session from the database and removes the session cookie.
@@ -808,6 +820,8 @@ All sensitive configuration is read from `backend/.env`. A template is provided 
 | `DATABASE_URL` | String | *Required* | PostgreSQL connection string. Use Supabase IPv4 **Session pooler** (`port 5432`). |
 | `DB_POOL_SIZE` | Integer | `5` | Maximum number of concurrent database connections in the psycopg pool. |
 | `ADMIN_EMAILS` | String | `admin@nmamit.in` | Comma-separated list of emails granted administrative privileges upon login. |
+| `ADMIN_INITIAL_EMAIL` | String | `admin@nmamit.in` | Email for the initial admin account created at startup. Must also be in `ADMIN_EMAILS` and use an allowed domain. |
+| `ADMIN_INITIAL_PASSWORD` | String | *Required for initial admin setup* | Initial password used only when creating the admin or upgrading a passwordless record. Stored as a scrypt hash; it does not reset an existing password. Keep this value private. |
 | `ALLOWED_DOMAINS` | String | `nmamit.in,nitte.edu.in` | Comma-separated list of allowed email domain suffixes. |
 | `ANTHROPIC_API_KEY` | String | *Optional* | Anthropic API key to activate Claude Opus 5.5 natural language processing. |
 | `ANTHROPIC_MODEL` | String | `claude-opus-5-5` | Model identifier for Anthropic Claude. |
@@ -880,6 +894,8 @@ Open `backend/.env` in your text editor and configure:
 ```ini
 DATABASE_URL=postgresql://postgres.yourprojectid:yourpassword@aws-0-ap-south-1.pooler.supabase.com:5432/postgres
 ADMIN_EMAILS=admin@nmamit.in,coordinator@nitte.edu.in
+ADMIN_INITIAL_EMAIL=admin@nmamit.in
+ADMIN_INITIAL_PASSWORD=replace-with-a-private-password
 ALLOWED_DOMAINS=nmamit.in,nitte.edu.in
 ANTHROPIC_API_KEY=sk-ant-api03-...   # Optional (falls back to rule-based parser if omitted)
 ENV=development
@@ -911,8 +927,9 @@ npm run dev
 Open `http://localhost:3000` in your web browser.
 
 #### Signing In
-- Enter any valid email matching an allowed domain (e.g., `student@nmamit.in`, `faculty@nitte.edu.in`).
-- If you sign in using an address listed in `ADMIN_EMAILS` (such as `admin@nmamit.in`), the **Admin** navigation tab will appear automatically.
+- Register with an email matching an allowed college domain, then sign in using that email and password.
+- The initial admin account is bootstrapped from `ADMIN_INITIAL_EMAIL` and `ADMIN_INITIAL_PASSWORD` when the backend starts. If its account already has a password, later startup runs will not reset it.
+- If you sign in using an address listed in `ADMIN_EMAILS`, the **Admin** navigation tab will appear automatically.
 
 ---
 

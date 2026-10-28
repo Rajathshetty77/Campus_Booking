@@ -10,6 +10,8 @@ export default function LoginPage() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [registering, setRegistering] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -29,7 +31,9 @@ export default function LoginPage() {
     setError("");
     setBusy(true);
     try {
-      await api("/auth/login", { body: { email, name } });
+      await api(registering ? "/auth/register" : "/auth/login", {
+        body: registering ? { email, name, password } : { email, password },
+      });
       router.replace("/calendar");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not sign in.");
@@ -62,17 +66,42 @@ export default function LoginPage() {
             aria-describedby="email-hint"
           />
           <p id="email-hint" className={`hint ${wrongDomain ? "hint-bad" : ""}`}>
-            {wrongDomain ? `@${typedDomain} isn't allowed. ` : ""}Only {domainText} addresses can sign in.
+            {wrongDomain ? `@${typedDomain} isn't allowed. ` : ""}Only {domainText} addresses can use this app.
           </p>
 
-          <label htmlFor="name">
-            Your name <span className="muted small">(optional, shown on your bookings)</span>
-          </label>
-          <input id="name" autoComplete="name" maxLength={80} placeholder="e.g. Rajath K" value={name} onChange={(e) => setName(e.target.value)} />
+          {registering && (
+            <>
+              <label htmlFor="name">Your name <span className="muted small">(optional, shown on your bookings)</span></label>
+              <input id="name" autoComplete="name" maxLength={80} placeholder="e.g. Rajath K" value={name} onChange={(e) => setName(e.target.value)} />
+            </>
+          )}
+
+          <label htmlFor="password">Password</label>
+          <input
+            id="password"
+            type="password"
+            required
+            minLength={registering ? 8 : undefined}
+            maxLength={128}
+            autoComplete={registering ? "new-password" : "current-password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          {registering && (
+            <p className="hint">
+              Use at least 8 characters. The app does not verify email ownership.
+            </p>
+          )}
 
           <button className="btn btn-primary" type="submit" disabled={busy || !config || !email.trim() || wrongDomain}>
-            {busy ? "Signing in…" : "Continue"}
+            {busy ? (registering ? "Creating account…" : "Signing in…") : registering ? "Create account" : "Sign in"}
           </button>
+          <p className="hint">
+            {registering ? "Already have an account? " : "New to campus booking? "}
+            <button type="button" className="link" onClick={() => { setRegistering(!registering); setError(""); }}>
+              {registering ? "Sign in" : "Create an account"}
+            </button>
+          </p>
         </form>
         {error && <p className="form-error" role="alert">{error}</p>}
       </section>

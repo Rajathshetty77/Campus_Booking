@@ -6,9 +6,12 @@ CREATE TABLE IF NOT EXISTS users (
   email       text NOT NULL UNIQUE CHECK (email = lower(email)),
   name        text NOT NULL,
   role        text NOT NULL DEFAULT 'member' CHECK (role IN ('member', 'admin')),
+  password_hash text,
   department  text,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash text;
 
 CREATE TABLE IF NOT EXISTS sessions (
   token       text PRIMARY KEY,

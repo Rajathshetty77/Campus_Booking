@@ -1,10 +1,7 @@
-"""Email sign-in, restricted to college addresses (@nmamit.in and @nitte.edu.in).
-
-Anyone who enters an address on an allowed domain is signed in. Ownership of the mailbox is not
-verified, so treat identities as self-declared (see README → "How sign-in works").
-"""
+"""Password authentication restricted to the configured college email domains."""
 
 import hashlib
+import hmac
 import os
 import re
 import secrets
@@ -16,12 +13,18 @@ from psycopg import Connection
 from .db import get_db
 
 ALLOWED_DOMAINS = [d.strip().lower() for d in os.getenv("ALLOWED_DOMAINS", "nmamit.in,nitte.edu.in").split(",") if d.strip()]
-ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "admin@nmamit.in").split(",") if e.strip()}
+INITIAL_ADMIN_EMAIL = os.getenv("ADMIN_INITIAL_EMAIL", "admin@nmamit.in").strip().lower()
+ADMIN_INITIAL_PASSWORD = os.getenv("ADMIN_INITIAL_PASSWORD", "")
 IS_PROD = os.getenv("ENV") == "production"
 
 COOKIE = "nb_session"
 SESSION_SECONDS = 7 * 86400
 EMAIL_RE = re.compile(r"[a-z0-9][a-z0-9._%+-]{0,63}@([a-z0-9-]+(?:\.[a-z0-9-]+)+)")
+SCRYPT_N = 2**14
+SCRYPT_R = 8
+SCRYPT_P = 1
+SCRYPT_KEY_LENGTH = 64
 
 
 def _sha256(s: str) -> str:
@@ -51,18 +54,64 @@ def public_user(u) -> dict | None:
     return {"id": u["id"], "email": u["email"], "name": u["name"], "role": u["role"], "department": u["department"]}
 
 
-def _upsert_user(conn: Connection, email: str, name: str | None = None):
-    role = "admin" if email in ADMIN_EMAILS else "member"
-    existing = conn.execute("SELECT * FROM users WHERE email = %s", (email,)).fetchone()
-    if existing:
-        # Keep roles in sync with ADMIN_EMAILS on every sign-in so the env var stays the source of truth.
-        new_role = role if ADMIN_EMAILS else existing["role"]
-        conn.execute("UPDATE users SET role = %s, name = %s WHERE id = %s", (new_role, name or existing["name"], existing["id"]))
-        return conn.execute("SELECT * FROM users WHERE id = %s", (existing["id"],)).fetchone()
-    return conn.execute(
-        "INSERT INTO users (email, name, role) VALUES (%s, %s, %s) RETURNING *",
-        (email, name or _name_from_email(email), role),
-    ).fetchone()
+def _password_hash(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    key = hashlib.scrypt(
+        password.encode("utf-8"),
+        salt=salt,
+        n=SCRYPT_N,
+        r=SCRYPT_R,
+        p=SCRYPT_P,
+        dklen=SCRYPT_KEY_LENGTH,
+    )
+    return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt.hex()}${key.hex()}"
+
+
+def _verify_password(password: str, encoded: str | None) -> bool:
+    if not encoded:
+        return False
+    try:
+        algorithm, n, r, p, salt_hex, key_hex = encoded.split("$")
+        if algorithm != "scrypt":
+            return False
+        expected = bytes.fromhex(key_hex)
+        actual = hashlib.scrypt(
+            password.encode("utf-8"),
+            salt=bytes.fromhex(salt_hex),
+            n=int(n),
+            r=int(r),
+            p=int(p),
+            dklen=len(expected),
+        )
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(actual, expected)
+
+
+def bootstrap_admin(conn: Connection) -> bool:
+    """Create the configured initial admin, without resetting an existing password."""
+    if INITIAL_ADMIN_EMAIL not in ADMIN_EMAILS:
+        raise RuntimeError("ADMIN_INITIAL_EMAIL must also be listed in ADMIN_EMAILS.")
+    if not allowed_email(INITIAL_ADMIN_EMAIL):
+        raise RuntimeError("ADMIN_INITIAL_EMAIL must use a domain listed in ALLOWED_DOMAINS.")
+    if not ADMIN_INITIAL_PASSWORD:
+        existing = conn.execute(
+            "SELECT password_hash FROM users WHERE email = %s",
+            (INITIAL_ADMIN_EMAIL,),
+        ).fetchone()
+        return bool(existing and existing["password_hash"])
+    if len(ADMIN_INITIAL_PASSWORD) < 8 or len(ADMIN_INITIAL_PASSWORD) > 128:
+        raise RuntimeError("ADMIN_INITIAL_PASSWORD must be between 8 and 128 characters.")
+
+    conn.execute(
+        """INSERT INTO users (email, name, role, password_hash)
+           VALUES (%s, %s, 'admin', %s)
+           ON CONFLICT (email) DO UPDATE SET
+             role = 'admin',
+             password_hash = COALESCE(users.password_hash, EXCLUDED.password_hash)""",
+        (INITIAL_ADMIN_EMAIL, "Admin", _password_hash(ADMIN_INITIAL_PASSWORD)),
+    )
+    return True
 
 
 def _start_session(conn, response: Response, user_id: int) -> None:
@@ -96,14 +145,52 @@ def admin_user(user=Depends(current_user)):
     return user
 
 
-# ---------- sign-in ----------
+# ---------- registration and sign-in ----------
 
-def email_sign_in(conn, response: Response, email: str, name: str = "") -> dict:
+def register(conn: Connection, response: Response, email: str, password: str, name: str = "") -> dict:
     normalised = allowed_email(email)
     if not normalised:
-        raise HTTPException(400, f"Use your college email address ({domains_text()}).")
+        raise HTTPException(400, f"Register with a college email address ({domains_text()}).")
+    if normalised in ADMIN_EMAILS:
+        raise HTTPException(403, "Administrator accounts are provisioned by the server.")
+    if len(password) < 8 or len(password) > 128:
+        raise HTTPException(400, "Password must be between 8 and 128 characters.")
+
     name = re.sub(r"\s+", " ", name or "").strip()[:80]
-    user = _upsert_user(conn, normalised, name or None)
+    role = "member"
+    password_hash = _password_hash(password)
+    user = conn.execute(
+        """UPDATE users SET password_hash = %s,
+             name = CASE WHEN %s <> '' THEN %s ELSE name END, role = %s
+           WHERE email = %s AND password_hash IS NULL RETURNING *""",
+        (password_hash, name, name, role, normalised),
+    ).fetchone()
+    if not user:
+        user = conn.execute(
+            """INSERT INTO users (email, name, role, password_hash)
+               VALUES (%s, %s, %s, %s)
+               ON CONFLICT (email) DO NOTHING RETURNING *""",
+            (normalised, name or _name_from_email(normalised), role, password_hash),
+        ).fetchone()
+    if not user:
+        raise HTTPException(409, "An account already exists for this email. Sign in instead.")
+    _start_session(conn, response, user["id"])
+    return {"user": public_user(user)}
+
+
+def password_sign_in(conn: Connection, response: Response, email: str, password: str) -> dict:
+    normalised = allowed_email(email)
+    if not normalised:
+        raise HTTPException(400, f"Use a college email address ({domains_text()}).")
+    user = conn.execute("SELECT * FROM users WHERE email = %s", (normalised,)).fetchone()
+    if not user or not _verify_password(password, user["password_hash"]):
+        raise HTTPException(401, "Incorrect email or password.")
+
+    # Keep configured admin addresses authoritative, while preserving existing roles if unset.
+    role = ("admin" if normalised in ADMIN_EMAILS else "member") if ADMIN_EMAILS else user["role"]
+    if user["role"] != role:
+        conn.execute("UPDATE users SET role = %s WHERE id = %s", (role, user["id"]))
+        user["role"] = role
     _start_session(conn, response, user["id"])
     return {"user": public_user(user)}
 

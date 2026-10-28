@@ -25,6 +25,10 @@ async def lifespan(_app: FastAPI):
     init_db()
     with connection() as conn:
         auth.purge_expired(conn)
+        if auth.bootstrap_admin(conn):
+            print(f"Admin account is configured for {auth.INITIAL_ADMIN_EMAIL}.", flush=True)
+        elif auth.INITIAL_ADMIN_EMAIL in auth.ADMIN_EMAILS:
+            print("Set ADMIN_INITIAL_PASSWORD in backend/.env to bootstrap the initial admin account.", flush=True)
     status = await probe_ai()
     print(f"AI assistant: {'Claude (' + status['model'] + ')' if status['enabled'] else 'rule-based fallback (' + str(status['reason']) + ')'}", flush=True)
     if not auth.ADMIN_EMAILS:
@@ -50,6 +54,11 @@ async def http_error(_req: Request, exc: HTTPException):
 
 class LoginIn(BaseModel):
     email: str = Field(max_length=254)
+    password: str = Field(max_length=128)
+
+
+class RegisterIn(LoginIn):
+    password: str = Field(min_length=8, max_length=128)
     name: str = Field(default="", max_length=80)
 
 
@@ -64,9 +73,14 @@ def config(conn: Connection = DB, user=Depends(auth.optional_user)):
     }
 
 
+@app.post("/api/auth/register", status_code=201)
+def register(body: RegisterIn, response: Response, conn: Connection = DB):
+    return auth.register(conn, response, body.email, body.password, body.name)
+
+
 @app.post("/api/auth/login")
 def login(body: LoginIn, response: Response, conn: Connection = DB):
-    return auth.email_sign_in(conn, response, body.email, body.name)
+    return auth.password_sign_in(conn, response, body.email, body.password)
 
 
 @app.post("/api/auth/logout")
